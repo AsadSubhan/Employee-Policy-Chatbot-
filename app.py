@@ -34,7 +34,7 @@ cursor = db.cursor()
 
 os.environ["OPENAI_API_KEY"] = os.getenv('OPENAI_API_KEY')
 
-pdfreader = PdfReader('arpatech_employee_manual.pdf')
+pdfreader = PdfReader('employee_manual.pdf')
 
 raw_text = ''
 for i, page in enumerate(pdfreader.pages):
@@ -58,7 +58,7 @@ chain = load_qa_chain(OpenAI(temperature = 0.7), chain_type ="stuff")
 
 
 def chat_stream():
-    st.title("Hello Arpatechians!")
+    st.title("Hello Folks!")
     st.header("Chatbot for Employee Policies")
 
     query = st.text_input("Please ask a question regarding company policy")
