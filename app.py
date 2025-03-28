@@ -17,7 +17,7 @@ os.environ["OPENAI_API_KEY"] = os.getenv('OPENAI_API_KEY')
 @st.cache_resource
 def process_pdf():
     """Read and process the PDF once, cache the vector store."""
-    pdfreader = PdfReader('arpatech_employee_manual.pdf')
+    pdfreader = PdfReader('employee_manual.pdf')
 
     raw_text = ''
     for page in pdfreader.pages:
