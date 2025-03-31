@@ -1,3 +1,4 @@
 .env
-venv
+.venv
 employee_manual.pdf
+__pycache__

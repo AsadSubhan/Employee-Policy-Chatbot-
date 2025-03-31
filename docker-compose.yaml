@@ -1,0 +1,44 @@
+version: '3'
+
+services:
+  app:
+    build: .
+    container_name: employee_chatbot
+    ports: 
+      - "8501:8501"
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    depends_on:
+      - database
+    networks:
+      - mynetwork
+    env_file:
+      - .env
+
+  database:
+    image: mysql:latest
+    container_name: sql-container
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+    networks:
+      - mynetwork
+    env_file:
+      - .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASS}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS} 
+      MYSQL_DATABASE: ${DB_NAME}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
+networks:
+  mynetwork:
+    driver: bridge
+
+volumes:
+  mysql-data:
+    driver: local
