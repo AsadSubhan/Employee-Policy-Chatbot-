@@ -46,7 +46,7 @@ def load_chain():
         SYSTEM_PROMPT + "\n\nContext: {context}\n\nQuestion: {question}\nAnswer:"
     )
 
-    return load_qa_chain(ChatOpenAI(model="gpt-4-turbo", temperature=0.7), 
+    return load_qa_chain(ChatOpenAI(model="gpt-4o", temperature=0.7), 
                          chain_type="stuff", 
                          prompt=prompt)
 
