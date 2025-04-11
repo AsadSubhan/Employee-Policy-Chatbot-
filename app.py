@@ -2,14 +2,16 @@ import os
 from PyPDF2 import PdfReader
 from dotenv import load_dotenv
 from langchain.text_splitter import CharacterTextSplitter
-from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
 from langchain.chains.question_answering import load_qa_chain
-from langchain.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 import streamlit as st
 import pymysql
 from langchain.prompts import PromptTemplate
 from system_prompt import get_system_prompt
+from langdetect import detect, LangDetectException
+import re
 
 
 # Load environment variables
@@ -31,24 +33,65 @@ def process_pdf():
     splitter = CharacterTextSplitter(separator="\n", chunk_size=800, chunk_overlap=200)
     chunks = splitter.split_text(raw_text)
 
-    embeddings = OpenAIEmbeddings()
+    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
     document_search = FAISS.from_texts(chunks, embeddings)
 
     return document_search
 
-SYSTEM_PROMPT = get_system_prompt()
-
 @st.cache_resource
-def load_chain():  
-    """Cache the QA chain with a system prompt."""
+def process_roman_words():
+    with open("roman_urdu_cleaned_list.txt", "r", encoding="utf-8") as file_words:
+        content_roman = file_words.read()
+        roman_words_list = [word.strip() for word in content_roman.split(',') if word.strip()]
 
-    prompt = PromptTemplate.from_template(
-        SYSTEM_PROMPT + "\n\nContext: {context}\n\nQuestion: {question}\nAnswer:"
-    )
+    return roman_words_list
 
-    return load_qa_chain(ChatOpenAI(model="gpt-4o", temperature=0.7), 
-                         chain_type="stuff", 
-                         prompt=prompt)
+
+def detect_language(text):
+    # Special handling for very short text
+    if len(text.split()) <= 3:  # For texts with 3 or fewer words
+        # Check if text contains only English alphabet characters and common punctuation
+        if re.match(r'^[a-zA-Z\s.,!?-]+$', text):
+            return "Query is in English, so you should respond in English as well."
+    
+    # For longer text, try language detection
+    try:
+        # Use langdetect with error handling
+        detected_lang = detect(text)
+        
+        # Higher confidence in English detection
+        if detected_lang == "en":
+            return "Query is in English, so you should respond in English as well."
+        
+        # Check for Roman Urdu words (using whole word matching)
+        text_lower = text.lower()
+        words_in_text = set(text_lower.split())
+        roman_urdu_words_in_text = words_in_text.intersection(set(process_roman_words()))
+        
+        if roman_urdu_words_in_text:
+            matched_words = list(roman_urdu_words_in_text)
+            # Optionally log which words matched
+            # print(f"Matched Roman Urdu words: {matched_words}")
+            return "Query is in Roman Urdu, so you should respond in Roman Urdu as well."
+        
+        # Double-check English: Common words that strongly indicate English
+        english_indicators = {"the", "is", "are", "and", "or", "but", "a", "an", "in", "on", "at", 
+                             "of", "for", "to", "with", "by", "from", "as", "that", "this", "these", 
+                             "those", "my", "your", "our", "their", "his", "her", "its"}
+        
+        if words_in_text.intersection(english_indicators):
+            return "Query is in English, so you should respond in English as well."
+        
+        if detected_lang == "ur":
+            return "Query is in Urdu, so you should respond in Urdu as well."
+        
+        # Fallback to detected language if we're still unsure
+        return f"Query is in {detected_lang}, so you should respond in {detected_lang} as well."
+        
+    except LangDetectException:
+        # Fallback to English if language detection fails
+        return "Unable to detect language confidently. Defaulting to English response."
+
 
 @st.cache_resource
 def init_connection_pool():
@@ -86,7 +129,7 @@ def execute_query(sql, values=None, fetch=False):
         st.error(f"Database Error: {e}")
     finally:
         cursor.close()
-        db.close()  # Ensure connection is closed after query execution
+        db.close()  # Ensure connection is closed after execution
 
 
 # Cache query results 
@@ -109,7 +152,6 @@ def get_query_history():
 
 # Get cached resources
 document_search = process_pdf()
-chain = load_chain()
 
 
 def chat_stream():
@@ -136,6 +178,22 @@ def chat_stream():
         """, unsafe_allow_html=True)
 
     if submitted and query:
+        # Detect the language of the query
+        language_info = detect_language(query)
+
+        # Dynamically generate the system prompt based on detected language
+        SYSTEM_PROMPT = get_system_prompt(language_info)
+
+        # Build the prompt template with the updated SYSTEM_PROMPT
+        prompt = PromptTemplate.from_template(
+            SYSTEM_PROMPT + "\n\nContext: {context}\n\nQuestion: {question}\nAnswer:"
+        )
+
+        # Initialize the QA chain with the new prompt
+        chain = load_qa_chain(ChatOpenAI(model="gpt-4o", temperature=0.7), 
+                            chain_type="stuff", 
+                            prompt=prompt)
+
         # Search for relevant documents
         docs = document_search.similarity_search(query)
         response = chain.run(input_documents=docs, question=query)
